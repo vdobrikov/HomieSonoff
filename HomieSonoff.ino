@@ -36,7 +36,7 @@
 #include <AsyncDelay.h>
 
 #define FW_NAME "itead-sonoff"
-#define FW_VERSION "1.0.0"
+#define FW_VERSION "1.0.1"
 
 #define PIN_RELAY 12
 #define PIN_LED 13
@@ -46,7 +46,6 @@
 
 HomieNode switchNode("switch0", "switch");
 
-volatile bool swCurrentStatus = false;
 volatile bool swSentStatus = false;
 
 Bounce debouncer = Bounce(); 
@@ -77,9 +76,8 @@ void setup() {
 
 void loop() {
   debouncer.update();
-  bool value = debouncer.fell();
   
-  if (value) {
+  if (debouncer.fell()) {
     toggleSwitch();
   } 
 
@@ -92,12 +90,9 @@ void setupHandler() {
 }
 
 void loopHandler() {
-  if (!swSentStatus) {
+  if (!swSentStatus || delayStatus.isExpired()) {
     Serial.println("Need to send status");
     swSentStatus = sendStatus();
-  }
-  if (delayStatus.isExpired()) {
-    sendStatus();
     delayStatus.repeat();
   }
 }
@@ -105,18 +100,12 @@ void loopHandler() {
 bool switchOnHandler(String value) {
   if (value == "ON") {
     digitalWrite(PIN_RELAY, HIGH);
-    swCurrentStatus = true;
-    Homie.setNodeProperty(switchNode, "on", "ON", true);
-    swSentStatus = true;
-    Serial.println("Switch is on");
   } else if (value == "OFF") {
     digitalWrite(PIN_RELAY, LOW);
-    swCurrentStatus = false;
-    Homie.setNodeProperty(switchNode, "on", "OFF", true);
-    swSentStatus = true;
   } else {
     return false;
   }
+  swSentStatus = false;
   Serial.print("Remote event: ");
   Serial.println(value);
 
@@ -125,9 +114,10 @@ bool switchOnHandler(String value) {
 
 bool sendStatus() {
   if (Homie.isReadyToOperate()) {
-    Homie.setNodeProperty(switchNode, "on", swCurrentStatus ? "ON" : "OFF", true);
+    bool curStatus = digitalRead(PIN_RELAY);
+    Homie.setNodeProperty(switchNode, "on", curStatus ? "ON" : "OFF", true);
     Serial.print("Status sent successfully (");
-    Serial.print(swCurrentStatus ? "ON" : "OFF");
+    Serial.print(curStatus ? "ON" : "OFF");
     Serial.println(")");
     return true;
   } else {
@@ -137,12 +127,10 @@ bool sendStatus() {
 }
 
 void toggleSwitch() {
-  bool value = digitalRead(PIN_RELAY);
-  digitalWrite(PIN_RELAY, !value);
-  swCurrentStatus = !value;
+  bool curStatus = digitalRead(PIN_RELAY);
+  digitalWrite(PIN_RELAY, !curStatus);
   swSentStatus = false;
   Serial.print("Local event: ");
-  Serial.println(swCurrentStatus ? "ON" : "OFF");
-  swSentStatus = sendStatus();
+  Serial.println(!curStatus ? "ON" : "OFF");
 }
 
