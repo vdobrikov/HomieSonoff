@@ -36,13 +36,14 @@
 #include <AsyncDelay.h>
 
 #define FW_NAME "itead-sonoff"
-#define FW_VERSION "1.0.1"
+#define FW_VERSION "1.0.2"
 
 #define PIN_RELAY 12
 #define PIN_LED 13
 #define PIN_BUTTON 0
 
 #define TIMEOUT_MILLIS_STATUS 60000 // 1 min
+#define TIMEOUT_MILLIS_DISCONNECTED 60000 // 1 min
 
 HomieNode switchNode("switch0", "switch");
 
@@ -50,6 +51,9 @@ volatile bool swSentStatus = false;
 
 Bounce debouncer = Bounce(); 
 AsyncDelay delayStatus;
+
+bool disconnected = false;
+unsigned long disconnectedTime = 0;
 
 void setup() {
   Serial.begin(115200);
@@ -82,6 +86,18 @@ void loop() {
   } 
 
   Homie.loop();
+
+  if (!Homie.isReadyToOperate()) {
+    if (disconnected && millis() - disconnectedTime > TIMEOUT_MILLIS_DISCONNECTED) {
+      ESP.restart();
+    }
+    if (!disconnected) {
+      disconnected = true;  
+      disconnectedTime = millis();
+    }
+  } else {
+    disconnected = false;  
+  }
 }
 
 ///////// Handlers //////////
@@ -133,4 +149,5 @@ void toggleSwitch() {
   Serial.print("Local event: ");
   Serial.println(!curStatus ? "ON" : "OFF");
 }
+
 
